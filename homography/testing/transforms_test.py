@@ -70,7 +70,7 @@ def test_homography_transform() -> bool:
 def test_same_perspective_homography_trasnform() -> bool:
     mat = np.random.rand(4, 4)
     mat[:3, :3] = generate_matrix_with_pos_det(3, 1e-3)
-    T = transforms.SamePerspectiveHomography(mat[:3])
+    T = transforms.Affine(mat[:3])
     return test_transform(T)
 
 def test_vggt_slam2_transform() -> bool:
