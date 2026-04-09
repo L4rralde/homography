@@ -16,7 +16,7 @@ def estimate_sim3(
 ) -> npt.ArrayLike:
     N = src_points.shape[0]
     if weights is None:
-        weights = np.ones((N, 1))
+        weights = np.ones((N))
     s, R, t = robust_weighted_estimate_sim3(
         src_points, tgt_points, weights
     )
@@ -33,7 +33,7 @@ def estimate_se3(
 ) -> npt.ArrayLike:
     N = src_points.shape[0]
     if weights is None:
-        weights = np.ones((N, 1))
+        weights = np.ones((N))
     _, R, t = robust_weighted_estimate_sim3(
         src_points, tgt_points, weights, using_sim3=False
     )
@@ -50,7 +50,7 @@ def est_scale(
 ) -> float:
     N = scr_depth.shape[0]
     if weights is None:
-        weights = np.ones((N, 1))
+        weights = np.ones((N))
     else:
         weights = np.sqrt(np.asarray(weights).reshape(N, 1))
 
