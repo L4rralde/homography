@@ -2,7 +2,10 @@ from typing import Callable
 import numpy as np
 import numpy.typing as npt
 
-from homography import estimate
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import estimate
+from sl4 import SL4
 
 
 def generate_orthogonal_matrix(n):

@@ -16,7 +16,7 @@ import torch
 from scipy.spatial.transform import Rotation as scipy_R
 import pypose as pp
 
-from homography.sl4 import SL4
+from sl4 import SL4
 
 
 NP_DTYPE = np.float32

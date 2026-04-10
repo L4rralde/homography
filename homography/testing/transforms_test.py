@@ -2,8 +2,10 @@
 import numpy as np
 from scipy.linalg import logm, expm
 
-from homography import transforms
-from homography.sl4 import SL4
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import transforms
+from sl4 import SL4
 
 
 def generate_matrix_with_pos_det(n, min_det_magnitude=None):
