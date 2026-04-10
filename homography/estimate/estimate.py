@@ -4,9 +4,8 @@ from scipy.special import huber
 from scipy.optimize import minimize
 from scipy.optimize import least_squares
 
-from homography.estimate.vggt_long_sim3_utils import (
-    robust_weighted_estimate_sim3
-)
+from .vggt_long_sim3_utils import robust_weighted_estimate_sim3
+from .vggt_slam_solve_h import ransac_projective
 
 
 def estimate_sim3(
@@ -373,3 +372,36 @@ def estimate_affine(
     return __refine_coplanar_affine(
         A_initial, src_points, tgt_points, weights, alpha
     )
+
+
+def estimate_homography_ransac(
+    src_points: npt.ArrayLike,
+    tgt_points: npt.ArrayLike,
+    weights: npt.ArrayLike=None, #FUTURE
+) -> npt.ArrayLike:
+    """
+    Estimate 3D Homography using ransac method of VGGT SLAM 1.0.
+    Inputs:
+        src_points: (N, 3)
+        tgt_points: (N, 3)
+    Returns:
+        H: Homography (4, 4)
+    """
+
+    #N = min(10000, src_points.shape[0])
+    #N = max(2, src_points.shape[0]//2)
+    N = src_points.shape[0]
+    if weights is None:
+        idx = list(range(N))
+    else:
+        idx = np.argpartition(weights, -N)[-N:]
+    
+    max_iter = 2*int(np.ceil(np.log(0.01)/np.log(1-0.5**5)))
+    print("Number of iterations", max_iter)
+    H = ransac_projective(src_points[idx], tgt_points[idx], max_iter=max_iter, sample_size=8)
+    H /= H[3, 3]
+
+    return __refine_3D_homography(
+        H, src_points, tgt_points, weights
+    )
+
