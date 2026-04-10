@@ -1,3 +1,14 @@
+#Code adapted from 'VGGT-SLAM: Dense RGB SLAM Optimized on the SL (4) Manifold}'
+#  with minor modifications
+# https://github.com/MIT-SPARK/VGGT-SLAM/blob/version1.0/vggt_slam/h_solve.py
+# @article{maggio2025vggt-slam,
+#  title={VGGT-SLAM: Dense RGB SLAM Optimized on the SL (4) Manifold},
+#  author={Maggio, Dominic and Lim, Hyungtae and Carlone, Luca},
+#  journal={Advances in Neural Information Processing Systems},
+#  volume={39},
+#  year={2025}
+#}
+
 import open3d as o3d
 import numpy as np
 import torch
@@ -42,7 +53,14 @@ def apply_homography_batch(H_batch: torch.Tensor, X: torch.Tensor) -> torch.Tens
 
 def estimate_3D_homography(X_src_batch, X_dst_batch):
     """
-    Estimate batch of 3D Homography using Batched SVD.
+    Estimate batch of 3D Homography.
+    
+    Inputs:
+        X_src_batch: (B, N, 3)
+        X_dst_batch: (B, N, 3)
+        
+    Returns:
+        H_batch: (B, 4, 4)
     """
     B, N, _ = X_src_batch.shape
     ones = np.ones((B, N))
@@ -52,8 +70,10 @@ def estimate_3D_homography(X_src_batch, X_dst_batch):
 
     # Prepare matrices
     A = np.zeros((B, 3 * N, 16))
-    stacked_X = np.stack([x, y, z, ones], axis=2)
 
+    stacked_X = np.stack([x, y, z, ones], axis=2)  # (B, N, 4)
+
+    # Fill in A
     A[:, 0::3, 0:4] = -stacked_X
     A[:, 0::3, 12:16] = np.stack([x * xp, y * xp, z * xp, xp], axis=2)
 
@@ -63,30 +83,28 @@ def estimate_3D_homography(X_src_batch, X_dst_batch):
     A[:, 2::3, 8:12] = -stacked_X
     A[:, 2::3, 12:16] = np.stack([x * zp, y * zp, z * zp, zp], axis=2)
 
-    # Batched SVD: A is (B, 3N, 16). Vh is (B, 16, 16)
-    # The last row of Vh corresponds to the smallest singular value
-    _, _, Vh = np.linalg.svd(A)
-    H_batch = Vh[:, -1, :].reshape(B, 4, 4)
-
-    # Vectorized normalization and SL(4) projection
+    # Solve using null space
+    H_batch = np.zeros((B, 4, 4))
     for i in range(B):
-        H = H_batch[i]
-        
-        # Avoid division by zero
-        if abs(H[3, 3]) < 1e-8:
+        nullvec = null_space(A[i])
+        if nullvec.shape[1] == 0:
             H_batch[i] = np.eye(4)
             continue
-            
+
+        H = nullvec[:, 0].reshape(4, 4)
+        if H[3, 3] == 0:
+            H_batch[i] = np.eye(4)
+            continue
+
         H = H / H[3, 3]
+
         det = np.linalg.det(H)
-        
-        # Check for invalid determinants (reflections or singular matrices)
         if np.isnan(det) or det < 0.0001:
             H_batch[i] = np.eye(4)
         else:
-            H_batch[i] = H / (det**0.25)
+            H_batch[i] = H / det**0.25
 
-    return torch.tensor(H_batch, dtype=torch.float32)
+    return torch.tensor(H_batch, dtype = torch.float32)
 
 def is_planar(X, threshold=5e-2):
     X_centered = X - X.mean(axis=0)
@@ -153,7 +171,5 @@ def ransac_projective(X1_np, X2_np, threshold=0.01, max_iter=300, sample_size=5)
     # Select best hypothesis
     best_idx = torch.argmax(inlier_counts)
     best_H = H_ests[best_idx].cpu().numpy()
-
-    print(f"Num of inliers: {inlier_counts[best_idx]}")
 
     return best_H
