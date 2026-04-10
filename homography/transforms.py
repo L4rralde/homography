@@ -192,7 +192,7 @@ class Homography(Transform):
         p = x @ A.T + t #Shape (n, 3)
         w = x @ v + 1.0 # shape (n,)
         w = np.repeat(np.expand_dims(w, axis=1), 3, axis=1) #shape (n, 3)
-        return (p * w).reshape(original_shape)
+        return (p / w).reshape(original_shape)
 
 
 class Affine(Transform):
