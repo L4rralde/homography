@@ -50,8 +50,17 @@ def test_transform(T: transforms.Transform) -> bool:
         #    print(f"[Waived]. {type(T)} failed. {e}")
         x = np.random.rand(3)
         assert T(x).shape == (3, )
-        x = np.random.rand(10, 3)
-        assert T(x).shape == (10, 3)
+        x = np.random.rand(100, 3)
+        assert T(x).shape == (100, 3)
+
+        x_t = T(x)
+        x_t_back = T.inv()(x_t)
+        back_close = np.allclose(x, x_t_back)
+        if not back_close:
+            print(f"FAIL. {type(T).__name__} T^-1(T(x)) != x")
+            print(f"x: {x}")
+            print(f"x': {x_t_back}")
+            assert False
     except AssertionError as e:
         print(f"FAIL. {type(T).__name__} failed with assertion: {e}")
         raise e
