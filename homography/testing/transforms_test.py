@@ -37,7 +37,6 @@ def test_transform(T: transforms.Transform) -> bool:
         assert T == T.copy()
         assert isinstance(repr(T), str)
         assert T.as_matrix().shape == (4, 4)
-        #try:
         tangent_match = transforms.all_close(
             T,
             type(T).from_tangent(T.tangent()),
@@ -48,8 +47,6 @@ def test_transform(T: transforms.Transform) -> bool:
             print("Original matrix", T.as_matrix())
             print("Recovered matrix", type(T).from_tangent(T.tangent()).as_matrix())
             assert False
-        #except Exception as e:
-        #    print(f"[Waived]. {type(T)} failed. {e}")
         x = np.random.rand(3)
         assert T(x).shape == (3, )
         x = np.random.rand(2, 3)
@@ -65,21 +62,19 @@ def test_transform(T: transforms.Transform) -> bool:
     except AssertionError as e:
         print(f"FAIL. {type(T).__name__} failed with assertion: {e}")
         raise e
-    #print(f"{type(T).__name__}. PASS.")
     return True
 
 
 def test_homography_transform() -> bool:
-    mat = np.random.rand(4, 4)
-    mat[:3, :3] = generate_matrix_with_pos_det(3, 1e-3)
-    mat[3, 3] = 1.0
-    mat = SL4.remove_reflection(mat)
+    while True:
+        mat = generate_matrix_with_pos_det(4, 1e-3)
+        mat /= mat[3, 3]
+        if np.linalg.det(mat[:3, :3]) < 1e-6 or np.linalg.det(mat) < 1e-6:
+            continue
+        break
     H = transforms.Homography(mat)
-    try:
-        return test_transform(H)
-    except AssertionError as a: #https://github.com/L4rralde/homography/issues/1
-        print(a)
-        return True
+    return test_transform(H)
+
 
 def test_same_perspective_homography_trasnform() -> bool:
     mat = np.random.rand(4, 4)
