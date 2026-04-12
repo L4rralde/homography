@@ -5,7 +5,6 @@ from scipy.linalg import logm, expm
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import transforms
-from sl4 import SL4
 
 
 def generate_matrix_with_pos_det(n, min_det_magnitude=None):
@@ -19,14 +18,17 @@ def generate_matrix_with_pos_det(n, min_det_magnitude=None):
     M *= (1/det)**(1/n)
     return M
 
+
 def generate_orthogonal_matrix(n):
     mat = np.random.rand(n, n)
     q, _ = np.linalg.qr(mat)
     return q
 
+
 def test_logm_expm():
     mat = np.random.rand(4, 4)
     assert np.allclose(mat, expm(logm(mat)))
+
 
 def test_transform(T: transforms.Transform) -> bool:
     try:
@@ -76,27 +78,31 @@ def test_homography_transform() -> bool:
     return test_transform(H)
 
 
-def test_same_perspective_homography_trasnform() -> bool:
+def test_affine_trasnform() -> bool:
     mat = np.random.rand(4, 4)
     mat[:3, :3] = generate_matrix_with_pos_det(3, 1e-3)
     T = transforms.Affine(mat[:3])
     return test_transform(T)
+
 
 def test_vggt_slam2_transform() -> bool:
     mat = np.triu(np.random.rand(3,3))
     T = transforms.VggtSlam2Transform(mat)
     return test_transform(T)
 
+
 def test_SO3_transform() -> bool:
     mat = generate_orthogonal_matrix(3)
     T = transforms.SO3(mat)
     return test_transform(T)
+
 
 def test_SE3_transform() -> bool:
     rot = generate_orthogonal_matrix(3)
     t = np.random.rand(3)
     T = transforms.SE3(rot, t)
     return test_transform(T)
+
 
 def test_Sim3_transform() -> bool:
     s = 10 * np.exp(np.random.rand(1)).item()
@@ -105,6 +111,7 @@ def test_Sim3_transform() -> bool:
     t = np.random.rand(3)
     T = transforms.Sim3(s, rot, t)
     return test_transform(T)
+
 
 def test_scale_transform() -> bool:
     s = 10 * np.exp(np.random.rand(1)).item()
@@ -118,13 +125,14 @@ def main():
     for i in range(n_seeds):
         test_logm_expm()
         test_homography_transform() 
-        test_same_perspective_homography_trasnform()
+        test_affine_trasnform()
         test_vggt_slam2_transform()
         test_SO3_transform()
         test_SE3_transform()
         test_Sim3_transform()
         test_scale_transform()
         print(f"seed {i+1}. PASS")
+
 
 if __name__ == '__main__':
     main()
