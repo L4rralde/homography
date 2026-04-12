@@ -68,3 +68,41 @@ class SL4:
             U[:, -1] *= -1
         corrected_mat = (U * S) @ VH
         return corrected_mat
+
+
+class SL4Affine(SL4):
+    def __init__(self, mat: np.ndarray) -> None:
+        super().__init__(mat)
+        assert np.allclose(self.mat[3, :3], np.zeros(3))
+        self.mat[3, :3] = 0
+
+    def Log(self) -> np.ndarray:
+        log_mat = logm(self.mat)
+        
+        x12 = log_mat[0,0]
+        x13 = log_mat[1,1] + x12
+        x14 = -log_mat[3,3]
+        return np.asarray([
+            log_mat[0,1], log_mat[0,2], log_mat[0,3],
+            log_mat[1,0], log_mat[1,2], log_mat[1,3],
+            log_mat[2,0], log_mat[2,1], log_mat[2,3],
+            x12, x13, x14
+        ])
+
+    @classmethod
+    def Exp(cls, x: np.ndarray) -> "SL4Affine":
+        assert x.shape == (12,)
+        
+        d11 = x[9]
+        d22 = -x[9] + x[10]
+        d33 = -x[10] + x[11]
+        d44 = -x[11]
+
+        mat = np.asarray([
+            [d11, x[0], x[1], x[2]],
+            [x[3], d22, x[4], x[5]],
+            [x[6], x[7], d33, x[8]],
+            [0,    0,    0,   d44]
+        ])
+
+        return cls(expm(mat))

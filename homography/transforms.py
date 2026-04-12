@@ -16,7 +16,7 @@ import torch
 from scipy.spatial.transform import Rotation as scipy_R
 import pypose as pp
 
-from sl4 import SL4
+from sl4 import SL4, SL4Affine
 
 
 NP_DTYPE = np.float32
@@ -277,11 +277,11 @@ class Affine(Transform):
         return Affine(result_mat)
 
     def tangent(self) -> torch.Tensor:
-        return torch.Tensor(SL4(self.mat).Log()).to(TORCH_DTYPE)
+        return torch.Tensor(SL4Affine(self.mat).Log()).to(TORCH_DTYPE)
 
     @classmethod
     def from_tangent(cls, tangent: torch.Tensor) -> "Affine":
-        sl4_mat = SL4.Exp(tangent.cpu().numpy()).mat
+        sl4_mat = SL4Affine.Exp(tangent.cpu().numpy()).mat
         homography_mat = sl4_mat/sl4_mat[3, 3]
         return cls(homography_mat[:3])
 
