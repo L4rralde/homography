@@ -72,11 +72,11 @@ class Transform(ABC):
         )
     
     @abstractclassmethod
-    def tangent(self) -> object:
+    def tangent(self) -> torch.Tensor:
         raise NotImplementedError()
 
     @abstractclassmethod
-    def from_tangent(tangent: object) -> "Transform":
+    def from_tangent(tangent: torch.Tensor) -> "Transform":
         raise NotImplementedError()
 
     @abstractclassmethod
@@ -183,13 +183,14 @@ class Homography(Transform):
         return np.array_equal(self.mat, other.mat)
 
     def tangent(self) -> torch.Tensor:
-        return torch.Tensor(SL4(self.mat).Log()).to(TORCH_DTYPE)
+        mat = torch.from_numpy(self.mat)
+        return torch.Tensor(SL4(mat).Log()).to(TORCH_DTYPE)
 
     @classmethod
     def from_tangent(cls, tangent: torch.Tensor) -> "Affine":
-        sl4_mat = SL4.Exp(tangent.cpu().numpy()).mat
+        sl4_mat = SL4.Exp(tangent).mat
         homography_mat = sl4_mat/sl4_mat[3, 3]
-        return cls(homography_mat)
+        return cls(homography_mat.cpu().numpy())
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         original_shape = x.shape
@@ -285,12 +286,13 @@ class Affine(Transform):
         return Affine(result_mat)
 
     def tangent(self) -> torch.Tensor:
-        return torch.Tensor(SL4Affine(self.mat).Log()).to(TORCH_DTYPE)
+        mat = torch.from_numpy(self.mat)
+        return torch.Tensor(SL4Affine(mat).Log()).to(TORCH_DTYPE)
 
     @classmethod
     def from_tangent(cls, tangent: torch.Tensor) -> "Affine":
-        sl4_mat = SL4Affine.Exp(tangent.cpu().numpy()).mat
-        homography_mat = sl4_mat/sl4_mat[3, 3]
+        sl4_mat = SL4Affine.Exp(tangent).mat
+        homography_mat = (sl4_mat/sl4_mat[3, 3]).cpu().numpy()
         return cls(homography_mat[:3])
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
@@ -371,12 +373,13 @@ class VggtSlam2Transform(Transform):
         return VggtSlam2Transform(self.sK_mat @ other.sK_mat)
 
     def tangent(self) -> torch.Tensor:
-        return torch.Tensor(SL4(self.as_matrix()).Log()).to(TORCH_DTYPE)
+        mat = torch.from_numpy(self.as_matrix())
+        return torch.Tensor(SL4(mat).Log()).to(TORCH_DTYPE)
 
     @classmethod
     def from_tangent(cls, tangent: torch.Tensor) -> "VggtSlam2Transform":
-        sl4_mat = SL4.Exp(tangent.cpu().numpy()).mat
-        homography_mat = sl4_mat/sl4_mat[3, 3]
+        sl4_mat = SL4.Exp(tangent).mat
+        homography_mat = (sl4_mat/sl4_mat[3, 3]).cpu().numpy()
         assert np.allclose(homography_mat[:3, 3], np.zeros(3))
         assert np.allclose(homography_mat[3, :3], np.zeros(3))
         return cls(homography_mat[:3, :3])
