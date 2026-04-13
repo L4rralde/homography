@@ -84,6 +84,11 @@ class Transform(ABC):
         #Transforms points
         raise NotImplementedError()
 
+    @property
+    @abstractclassmethod
+    def ndof(self) -> int:
+        raise NotImplementedError()
+
 
 def all_close(a: Transform, b: Transform, rtol: float=1e-05, atol: float=1e-08) -> bool:
     assert type(a) == type(b)
@@ -203,6 +208,9 @@ class Homography(Transform):
         w = np.repeat(np.expand_dims(w, axis=1), 3, axis=1) #shape (n, 3)
         return (p / w).reshape(original_shape)
 
+    @property
+    def ndof(self) -> int:
+        return 15
 
 class Affine(Transform):
     """
@@ -297,6 +305,10 @@ class Affine(Transform):
         #A is 3x3. x is nx3. A x^T is 3 xn. Hence (A x^T)^T = x A^t
         return (x @ A.T + t).reshape(original_shape)
 
+    @property
+    def ndof(self) -> int:
+        return 12
+
 
 class VggtSlam2Transform(Transform):
     """
@@ -377,6 +389,10 @@ class VggtSlam2Transform(Transform):
         n, d = x.shape
         assert d == 3
         return (x @ self.sK_mat.T).reshape(original_shape)
+
+    @property
+    def ndof(self) -> int:
+        return 6
 
 
 class SO3(Transform):
@@ -460,6 +476,9 @@ class SO3(Transform):
             result = np.squeeze(x, axis=0)
         return result
 
+    @property
+    def ndof(self) -> int:
+        return 3
 
 class SE3(SO3):
     """
@@ -530,6 +549,10 @@ class SE3(SO3):
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return super().__call__(x) + self.translation
+
+    @property
+    def ndof(self) -> int:
+        return 6
 
 
 class Sim3(SE3):
@@ -628,6 +651,10 @@ class Sim3(SE3):
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return (self.scale * SO3.__call__(self, x)) + self.translation
 
+    @property
+    def ndof(self) -> int:
+        return 7
+
 # Assumption #1. Depth maps are robust, so we can estimate s directly using depthmaps.
 #Hence, we treat s as constant in estimation methods.
     
@@ -685,6 +712,10 @@ class ScaleTransform(Transform):
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return x * self.scale
+
+    @property
+    def ndof(self) -> int:
+        return 1
 
 
 
