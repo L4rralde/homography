@@ -174,7 +174,7 @@ class Homography(Transform):
         return f"Homography(mat: {self.mat.flatten()})"
 
     def as_matrix(self) -> np.ndarray:
-        return self.mat
+        return self.mat.copy()
     
     def __matmul__(self, other: "Homography") -> "Homography":
         return Homography(self.mat @ other.mat)
@@ -279,7 +279,7 @@ class Affine(Transform):
         return f"Affine(mat: {self.mat.flatten()})"
 
     def as_matrix(self) -> np.ndarray:
-        return self.mat
+        return self.mat.copy()
 
     def __matmul__(self, other: "Affine") -> "Affine":
         result_mat = (self.mat @ other.mat)[:3]
