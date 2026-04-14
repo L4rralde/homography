@@ -24,7 +24,7 @@ class SL4:
         det = torch.linalg.det(mat)
         if det <= 1e-6:
             raise ValueError(f"Matrix determinant must be positive for SL(4) normalization. Got det: {det:.4f}")
-        self.mat: torch.Tensor = (mat / det**0.25).to(torch.float32)
+        self.mat: torch.Tensor = (mat / det**0.25)
 
     def inv(self) -> "SL4":
         return SL4(torch.linalg.inv(self.mat))
@@ -33,7 +33,7 @@ class SL4:
         return SL4(self.mat @ other.mat)
 
     def Log(self) -> torch.Tensor:
-        log_mat = (logm(self.mat).real).to(torch.float32)
+        log_mat = (logm(self.mat).real)
         
         x12 = log_mat[0,0]
         x13 = log_mat[1,1] + x12
