@@ -89,7 +89,7 @@ class SL4:
 class SL4Affine(SL4):
     def __init__(self, mat: torch.Tensor) -> None:
         assert torch.allclose(
-            self.mat[3, :3],
+            mat[3, :3],
             torch.zeros(3, dtype=mat.dtype, device=mat.device)
         )
         mask = torch.ones_like(mat)
