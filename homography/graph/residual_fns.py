@@ -1,12 +1,11 @@
 import torch
 
-from core import Residual, Edge
-import sys, os
-sys.path.append(os.path.basename(os.path.basename(__file__)))
-from sl4 import SL4
+from .core import Residual, Edge
+from ..sl4 import SL4
 
 
 class ResidualSL4(Residual):
+    ndof = 15
     def residual(
         self,
         parent_est: SL4, 
@@ -22,21 +21,32 @@ class ResidualSL4(Residual):
             - meas: SL4 matrix
         """
         prediction = parent_est.inv() @ child_est
-        return (meas.inv() @ prediction).Log()
+        delta_sl4 = meas.inv() @ prediction
+        return (delta_sl4).Log()
+
+    def edge_residual(self, edge: Edge) -> torch.Tensor:
+        parent_est = edge.parent.estimate.as_matrix()
+        child_est = edge.child.estimate.as_matrix()
+        meas = edge.transform.as_matrix()
+        return self.residual(
+            SL4(torch.from_numpy(parent_est)),
+            SL4(torch.from_numpy(child_est)),
+            SL4(torch.from_numpy(meas))
+        )
 
     def edge_jacobian(self, edge: Edge) -> torch.Tensor:
         parent_pose = torch.from_numpy(
             edge.parent.estimate.as_matrix()
-        ).requires_grad_(True)
+        )
         parent_est_sl4 = SL4(parent_pose)
         child_pose = torch.from_numpy(
             edge.child.estimate.as_matrix()
-        ).requires_grad_(True)
+        )
         child_est_sl4 = SL4(child_pose)
         meas = torch.from_numpy(edge.transform.as_matrix())
         meas_sl4 = SL4(meas)
     
-        zero_perturbation = torch.zeros(self.transform_type.ndof)
+        zero_perturbation = torch.zeros(self.ndof)
         parent_j = torch.autograd.functional.jacobian(
             lambda d: self.residual(
                 SL4.Exp(d) @ parent_est_sl4,

@@ -3,9 +3,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-import sys, os
-sys.path.append(os.path.abspath(os.path.abspath(__file__)))
-import transforms
+from .. import transforms
 
 
 class Vertex:
@@ -16,17 +14,17 @@ class Vertex:
     @classmethod
     def Homography(cls, idx: int, estimate: transforms.Homography) -> "Vertex":
         assert type(estimate) == transforms.Homography
-        cls(idx, estimate)
+        return cls(idx, estimate)
 
     @classmethod
     def Affine(cls, idx: int, estimate: transforms.Affine) -> "Vertex":
         assert type(estimate) == transforms.Affine
-        cls(idx, estimate)
+        return cls(idx, estimate)
 
     @classmethod
     def Sim3(cls, idx: int, estimate: transforms.Sim3) -> "Vertex":
         assert type(estimate) == transforms.Sim3
-        cls(idx, estimate)
+        return cls(idx, estimate)
 
     def update(self, delta: torch.Tensor) -> None:
         assert delta.shape == (self.estimate.ndof,)
@@ -135,12 +133,9 @@ class Residual(ABC):
     def edge_jacobian(self, edge: Edge) -> torch.Tensor:
         raise NotImplementedError()
 
+    @abstractmethod
     def edge_residual(self, edge: Edge) -> torch.Tensor:
-        return self.residual(
-            edge.parent.estimate,
-            edge.child.estimate,
-            edge.transform
-        )
+        raise NotImplementedError()        
 
     def loss(self, edges: List[Edge]) -> None:
         acc = 0.0
@@ -163,19 +158,20 @@ class Algorithm(ABC):
         self.__edges: List[Edge] = edges
         self.__vertices: List[Vertex] = vertices
         self.eps: float = eps
-        self.__pose_type = self.get_pose_type()
+        self.__pose_type: List[Type] = self.get_pose_type()
+        self.__edge_types_list: List[Type] = self.get_edges_type_list()
 
     def get_pose_type(self) -> Type[transforms.Transform]:
         if not self.__vertices:
             return None
-        vertex_types = set(v.estimate for v in self.__vertices)
+        vertex_types = set(v.estimate.__class__ for v in self.__vertices)
         assert len(vertex_types) == 1
-        return vertex_types[0]
+        return list(vertex_types)[0]
 
     def get_edges_type_list(self) -> List[Type[transforms.Transform]]:
         if not self.__edges:
             return []
-        return list(set(e.transform for e in self.__edges))
+        return list(set(e.transform.__class__ for e in self.__edges))
 
     @property
     def edges(self) -> List[Edge]:
@@ -192,7 +188,7 @@ class Algorithm(ABC):
     @property
     def m(self) -> int:
         #FUTURE. Allow different types of edges:
-        return self.__edge_types_list[0].ndof
+        return 15 #FIXME
 
     #This assumes all edges are of the same type.
     def compute_h_and_b(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -207,7 +203,7 @@ class Algorithm(ABC):
             jacob_i, jacob_j = self.residual.edge_jacobian(edge)
             parent_idx = edge.parent.idx
             child_idx = edge.child.idx
-            omega = edge.information
+            omega = torch.eye(15).to(torch.float32)
             H[parent_idx, parent_idx] += jacob_i.T @ omega @ jacob_i
             H[parent_idx, child_idx] += jacob_i.T @ omega @ jacob_j
             H[child_idx, parent_idx] += jacob_j.T @ omega @ jacob_i
