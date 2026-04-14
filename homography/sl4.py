@@ -1,17 +1,30 @@
 import torch
-from scipy.linalg import logm, expm
 
 
 #Base on (MiT Spark Lab) VGGT-SLAM:
 #VGGT-SLAM: Dense RGB SLAM Optimized on the SL(4) Manifold
 #Src code: https://github.com/MIT-SPARK/gtsam_with_sl4/blob/8f0e9d3e9a697821ab9c3dece2189ce77ea0e776/gtsam/geometry/SL4.cpp
+
+
+def logm(mat: torch.Tensor) -> torch.Tensor:
+    mat_complex = mat.to(torch.complex128)
+    eigenvalues, eigenvectors = torch.linalg.eig(mat_complex)
+    log_eigenvalues = torch.log(eigenvalues)
+    log_mat_complex = (
+        eigenvectors @
+        torch.diag(log_eigenvalues) @
+        torch.linalg.inv(eigenvectors)
+    )
+    return log_mat_complex
+
+
 class SL4:
     def __init__(self, mat: torch.Tensor) -> None:
         assert mat.shape == (4, 4)
         det = torch.linalg.det(mat)
         if det <= 1e-6:
             raise ValueError(f"Matrix determinant must be positive for SL(4) normalization. Got det: {det:.4f}")
-        self.mat: torch.Tensor = mat / det**0.25
+        self.mat: torch.Tensor = (mat / det**0.25).to(torch.float32)
 
     def inv(self) -> "SL4":
         return SL4(torch.linalg.inv(self.mat))
@@ -20,12 +33,14 @@ class SL4:
         return SL4(self.mat @ other.mat)
 
     def Log(self) -> torch.Tensor:
-        log_mat = torch.from_numpy(logm(self.mat.cpu().numpy()))
+        log_mat = (logm(self.mat).real).to(torch.float32)
         
         x12 = log_mat[0,0]
         x13 = log_mat[1,1] + x12
         x14 = -log_mat[3,3]
-        return torch.Tensor([
+        
+        # Use torch.stack, NOT torch.Tensor
+        return torch.stack([
             log_mat[0,1], log_mat[0,2], log_mat[0,3],
             log_mat[1,0], log_mat[1,2], log_mat[1,3],
             log_mat[2,0], log_mat[2,1], log_mat[2,3],
@@ -42,11 +57,12 @@ class SL4:
         d33 = -x[13] + x[14]
         d44 = -x[14]
 
-        mat = torch.Tensor([
-            [d11, x[0], x[1], x[2]],
-            [x[3], d22, x[4], x[5]],
-            [x[6], x[7], d33, x[8]],
-            [x[9], x[10], x[11], d44]
+        # Use torch.stack to preserve the autograd graph!
+        mat = torch.stack([
+            torch.stack([d11, x[0], x[1], x[2]]),
+            torch.stack([x[3], d22, x[4], x[5]]),
+            torch.stack([x[6], x[7], d33, x[8]]),
+            torch.stack([x[9], x[10], x[11], d44])
         ])
 
         return cls(torch.linalg.matrix_exp(mat))
@@ -72,12 +88,14 @@ class SL4:
 
 class SL4Affine(SL4):
     def __init__(self, mat: torch.Tensor) -> None:
-        super().__init__(mat)
         assert torch.allclose(
             self.mat[3, :3],
             torch.zeros(3, dtype=mat.dtype, device=mat.device)
         )
-        self.mat[3, :3] = 0
+        mask = torch.ones_like(mat)
+        mask[3, :3] = 0
+        mat = mat * mask
+        super().__init__(mat)
 
     def Log(self) -> torch.Tensor:
         mask = torch.ones(15, dtype=torch.bool)
