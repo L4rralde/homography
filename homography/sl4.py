@@ -1,9 +1,25 @@
+from abc import ABC, abstractmethod
+
 import torch
 
 
 #Base on (MiT Spark Lab) VGGT-SLAM:
 #VGGT-SLAM: Dense RGB SLAM Optimized on the SL(4) Manifold
 #Src code: https://github.com/MIT-SPARK/gtsam_with_sl4/blob/8f0e9d3e9a697821ab9c3dece2189ce77ea0e776/gtsam/geometry/SL4.cpp
+
+class LieGroup(ABC):
+    @abstractmethod
+    def inv(self) -> "LieGroup":
+        raise NotImplementedError()
+
+    @abstractmethod
+    def Log(self) -> torch.Tensor:
+        raise NotImplementedError()
+
+    @classmethod
+    @abstractmethod
+    def Exp(cls, tangent: torch.Tensor) -> "LieGroup":
+        raise NotImplementedError()
 
 
 def logm(mat: torch.Tensor) -> torch.Tensor:
@@ -18,7 +34,8 @@ def logm(mat: torch.Tensor) -> torch.Tensor:
     return log_mat_complex
 
 
-class SL4:
+class SL4(LieGroup):
+    ndof = 15
     def __init__(self, mat: torch.Tensor) -> None:
         assert mat.shape == (4, 4)
         det = torch.linalg.det(mat)
@@ -87,6 +104,7 @@ class SL4:
 
 
 class SL4Affine(SL4):
+    ndof = 12
     def __init__(self, mat: torch.Tensor) -> None:
         assert torch.allclose(
             mat[3, :3],

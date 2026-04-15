@@ -48,51 +48,19 @@ class Edge:
         parent: Vertex,
         child: Vertex,
         transform: transforms.Transform,
-        information: torch.Tensor|None = None
+        information: torch.Tensor=None
     ):
         self.parent: Vertex = parent
         self.child: Vertex = child
         self.transform: transforms.Transform = transform.copy()
-        ndof = self.transform.ndof
-        self.information: torch.Tensor = (
-            information if information is not None
-            else torch.eye(ndof)
-        )
-        
-        assert self.information.shape == (ndof, ndof)
+        if information is None:
+            information = torch.eye(self.ndof)
+        self.information: torch.Tensor = information
 
-    @classmethod
-    def Sim3(
-        cls,
-        parent: Vertex,
-        child: Vertex,
-        transform: transforms.Sim3,
-        information: torch.Tensor|None = None
-    ) -> "Edge":
-        assert type(transform) == transforms.Sim3
-        return cls(parent, child, transform, information)
-    
-    @classmethod
-    def Affine(
-        cls,
-        parent: Vertex,
-        child: Vertex,
-        transform: transforms.Affine,
-        information: torch.Tensor|None = None
-    ) -> "Edge":
-        assert type(transform) == transforms.Affine
-        return cls(parent, child, transform, information)
-
-    @classmethod
-    def Homography(
-        cls,
-        parent: Vertex,
-        child: Vertex,
-        transform: transforms.Homography,
-        information: torch.Tensor|None = None
-    ) -> "Edge":
-        assert type(transform) == transforms.Homography
-        return cls(parent, child, transform, information)
+    @property
+    @abstractmethod
+    def ndof(self) -> int:
+        raise NotImplementedError()
 
     def copy(self):
         return self.__class__(
@@ -108,6 +76,32 @@ class Edge:
             self.child.estimate
         )
         self.transform = type(self.transform).from_matrix(transfom_mat)
+
+    @abstractmethod
+    def edge_jacobian(self) -> torch.Tensor:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def edge_residual(self) -> torch.Tensor:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def residual_fn(
+        self,
+        parent_est: object, 
+        child_est: object,
+        meas: object
+    ) -> torch.Tensor:
+        """
+        Computes residual in Lie algebra.
+        r = Log(H_{i,j}^{-1} @ (H_i^{-1} H_j))
+        parameters:
+            - parent_est: SL4 matrix
+            - child_est: SL4 matrix
+            - meas: SL4 matrix
+        """
+        raise NotImplementedError()
+
 
 
 #FUTURE. Include to Edge class
@@ -127,23 +121,7 @@ class Residual(ABC):
             - child_est: SL4 matrix
             - meas: SL4 matrix
         """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def edge_jacobian(self, edge: Edge) -> torch.Tensor:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def edge_residual(self, edge: Edge) -> torch.Tensor:
-        raise NotImplementedError()        
-
-    def loss(self, edges: List[Edge]) -> None:
-        acc = 0.0
-        for edge in edges:
-            residual = self.edge_residual(edge).unsqueeze(1) #m x 1
-            edge_loss = residual.T @ edge.information @ residual
-            acc = acc + edge_loss
-        return acc
+        raise NotImplementedError()     
 
 
 class Algorithm(ABC):
@@ -151,15 +129,13 @@ class Algorithm(ABC):
         self,
         edges: List[Edge],
         vertices: List[Vertex],
-        residual: Residual,
         eps: float = 1e-6
     ):
-        self.residual: Residual = residual
         self.__edges: List[Edge] = edges
         self.__vertices: List[Vertex] = vertices
         self.eps: float = eps
-        self.__pose_type: List[Type] = self.get_pose_type()
-        self.__edge_types_list: List[Type] = self.get_edges_type_list()
+        self.__pose_type: List[Type[transforms.Transform]] = self.get_pose_type()
+        self.__edge_types_list: List[Type[Edge]] = self.get_edges_type_list()
 
     def get_pose_type(self) -> Type[transforms.Transform]:
         if not self.__vertices:
@@ -188,7 +164,7 @@ class Algorithm(ABC):
     @property
     def m(self) -> int:
         #FUTURE. Allow different types of edges:
-        return 15 #FIXME
+        return self.__edge_types_list[0].ndof
 
     #This assumes all edges are of the same type.
     def compute_h_and_b(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -203,7 +179,7 @@ class Algorithm(ABC):
             jacob_i, jacob_j = self.residual.edge_jacobian(edge)
             parent_idx = edge.parent.idx
             child_idx = edge.child.idx
-            omega = torch.eye(15).to(torch.float32)
+            omega = edge.information
             H[parent_idx, parent_idx] += jacob_i.T @ omega @ jacob_i
             H[parent_idx, child_idx] += jacob_i.T @ omega @ jacob_j
             H[child_idx, parent_idx] += jacob_j.T @ omega @ jacob_i
@@ -244,6 +220,14 @@ class Algorithm(ABC):
     def append_vertex(self, vertex: Vertex) -> None:
         assert vertex.idx == len(self.__vertices)
         self.__vertices.append(vertex)
+
+    def loss(self) -> float:
+        acc = 0.0
+        for edge in self.__edges:
+            residual = edge.edge_residual().unsqueeze(1) #m x 1
+            edge_loss = residual.T @ edge.information @ residual
+            acc = acc + edge_loss
+        return acc
 
 
 class Optimizer:
