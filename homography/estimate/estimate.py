@@ -387,6 +387,7 @@ def estimate_affine(
             src_points, tgt_points, weights
         )
     
+    return A_initial
     return __refine_coplanar_affine(
         A_initial, src_points, tgt_points, weights, alpha
     )

@@ -1,14 +1,87 @@
 from typing import Type
 
 import torch
+import pypose as pp
 
-from homography.graph.core import Vertex
-from homography import transforms
-from .core import Edge
+from .. import transforms
+from .core import Vertex, Edge
 from ..sl4 import SL4, SL4Affine
 
 
+class EdgeSim3(Edge):
+    transform_type: Type[transforms.Transform] = transforms.Sim3
+
+    def __init__(
+        self,
+        parent: Vertex,
+        child: Vertex,
+        transform: transforms.Transform,
+        information: torch.Tensor = None
+    ):
+        self.check_transform_type(transform)
+        super().__init__(parent, child, transform, information)
+
+    @property
+    def ndof(self) -> int:
+        return self.transform.ndof
+
+    def check_transform_type(self, transform) -> bool:
+        return isinstance(transform, self.transform_type)
+
+    def residual_fn(
+        self,
+        parent_est: pp.Sim3,
+        child_est: pp.Sim3,
+        meas: pp.Sim3
+    ) -> torch.Tensor:
+        prediction = parent_est.Inv() @ child_est
+        return (meas.Inv() @ prediction).Log().tensor()
+
+    def edge_residual(self) -> torch.Tensor:
+        parent_est_transform: transforms.Sim3 = self.parent.estimate
+        child_est_transform: transforms.Sim3 = self.child.estimate
+        meas_transform: transforms.Sim3 = self.transform
+        return self.residual_fn(
+            parent_est_transform.aspypose(),
+            child_est_transform.aspypose(),
+            meas_transform.aspypose()
+        )
+
+    def edge_jacobian(self) -> torch.Tensor:
+        parent_est_transform: transforms.Sim3 = self.parent.estimate
+        child_est_transform: transforms.Sim3 = self.child.estimate
+        meas_transfom: transforms.Sim3 = self.transform
+
+        parent_est = parent_est_transform.aspypose().clone().requires_grad_(True)
+        child_est = child_est_transform.aspypose().clone().requires_grad_(True)
+        meas = meas_transfom.aspypose()
+
+        zero_perturbation = pp.sim3(torch.zeros(self.ndof)) #Lie algebra $\mathfrank{sl(4)}$
+
+        parent_j = torch.autograd.functional.jacobian(
+            lambda d: self.residual_fn(
+                d.Exp() @ parent_est,
+                child_est,
+                meas
+            ),
+            zero_perturbation
+        )
+        
+        child_j = torch.autograd.functional.jacobian(
+            lambda d: self.residual_fn(
+                parent_est,
+                d.Exp() @ child_est,
+                meas
+            ),
+            zero_perturbation
+        )
+
+        return parent_j, child_j
+    
+
 class EdgeSL4(Edge):
+    lie_group: Type[SL4] = SL4
+    transform_type: Type[transforms.Transform] = transforms.Homography
     def __init__(
         self,
         parent: Vertex,
@@ -16,9 +89,11 @@ class EdgeSL4(Edge):
         transform: transforms.Homography,
         information: torch.Tensor = None
     ):
-        assert isinstance(transform, transforms.Homography)
+        assert self.check_transform_type(transform)
         super().__init__(parent, child, transform, information)
-        self.lie_group: Type[SL4] = SL4
+
+    def check_transform_type(self, transform) -> bool:
+        return isinstance(transform, self.transform_type)
 
     @property
     def ndof(self) -> int:
@@ -41,7 +116,7 @@ class EdgeSL4(Edge):
         parent_est = self.parent.estimate.as_matrix()
         child_est = self.child.estimate.as_matrix()
         meas = self.transform.as_matrix()
-        return self.residual(
+        return self.residual_fn(
             self.lie_group(torch.from_numpy(parent_est)),
             self.lie_group(torch.from_numpy(child_est)),
             self.lie_group(torch.from_numpy(meas))
@@ -61,9 +136,9 @@ class EdgeSL4(Edge):
         meas = torch.from_numpy(self.transform.as_matrix())
         meas_in_lie = self.lie_group(meas)
 
-        zero_perturbation = torch.zeros(self.ndof)
+        zero_perturbation = torch.zeros(self.ndof).to(torch.float32)
         parent_j = torch.autograd.functional.jacobian(
-            lambda d: self.residual(
+            lambda d: self.residual_fn(
                 self.lie_group.Exp(d) @ parent_est_in_lie,
                 child_est_in_lie,
                 meas_in_lie
@@ -71,9 +146,9 @@ class EdgeSL4(Edge):
             zero_perturbation
         )
         child_j = torch.autograd.functional.jacobian(
-            lambda d: self.residual(
+            lambda d: self.residual_fn(
                 parent_est_in_lie,
-                SL4.Exp(d) @ child_est_in_lie,
+                self.lie_group.Exp(d) @ child_est_in_lie,
                 meas_in_lie
             ),
             zero_perturbation
@@ -83,13 +158,7 @@ class EdgeSL4(Edge):
 
 
 class EdgeSL4Affine(EdgeSL4):
-    def __init__(
-        self,
-        parent: Vertex,
-        child: Vertex,
-        transform: transforms.Affine,
-        information: torch.Tensor = None
-    ):
-        assert isinstance(transform, transforms.Affine)
-        super().__init__(parent, child, transform, information)
-        self.lie_group: Type[SL4Affine] = SL4Affine
+    lie_group: Type[SL4Affine] = SL4Affine
+    transform_type: Type[transforms.Transform] = transforms.Affine
+
+

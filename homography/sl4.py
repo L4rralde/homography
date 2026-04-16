@@ -41,13 +41,13 @@ class SL4(LieGroup):
         det = torch.linalg.det(mat)
         if det <= 1e-6:
             raise ValueError(f"Matrix determinant must be positive for SL(4) normalization. Got det: {det:.4f}")
-        self.mat: torch.Tensor = (mat / det**0.25)
+        self.mat: torch.Tensor = (mat / det**0.25).to(torch.float32)
 
     def inv(self) -> "SL4":
-        return SL4(torch.linalg.inv(self.mat))
+        return self.__class__(torch.linalg.inv(self.mat))
 
     def __matmul__(self, other: "SL4") -> "SL4":
-        return SL4(self.mat @ other.mat)
+        return self.__class__(self.mat @ other.mat)
 
     def Log(self) -> torch.Tensor:
         log_mat = (logm(self.mat).real)
@@ -63,7 +63,7 @@ class SL4(LieGroup):
             log_mat[2,0], log_mat[2,1], log_mat[2,3],
             log_mat[3,0], log_mat[3,1], log_mat[3,2],
             x12, x13, x14
-        ])
+        ]).to(torch.float32)
 
     @classmethod
     def Exp(cls, x: torch.Tensor) -> "SL4":

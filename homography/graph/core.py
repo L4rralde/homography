@@ -39,7 +39,7 @@ class Vertex:
 
 
 def relative_transform_matrix(parent_est: transforms.Transform, child_est: transforms.Transform):
-    return parent_est.inv().as_matrix @ child_est.as_matrix()
+    return parent_est.inv().as_matrix() @ child_est.as_matrix()
 
 
 class Edge:
@@ -134,7 +134,7 @@ class Algorithm(ABC):
         self.__edges: List[Edge] = edges
         self.__vertices: List[Vertex] = vertices
         self.eps: float = eps
-        self.__pose_type: List[Type[transforms.Transform]] = self.get_pose_type()
+        self.__pose_type: Type[transforms.Transform] = self.get_pose_type()
         self.__edge_types_list: List[Type[Edge]] = self.get_edges_type_list()
 
     def get_pose_type(self) -> Type[transforms.Transform]:
@@ -164,7 +164,7 @@ class Algorithm(ABC):
     @property
     def m(self) -> int:
         #FUTURE. Allow different types of edges:
-        return self.__edge_types_list[0].ndof
+        return self.__edges[0].ndof
 
     #This assumes all edges are of the same type.
     def compute_h_and_b(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -175,8 +175,8 @@ class Algorithm(ABC):
         b = torch.zeros(n, m) #FUTURE. Allow different types of edges:
 
         for edge in self.__edges:
-            residual = self.residual.edge_residual(edge) #FUTURE. Allow different types of edges. residual function will depend on edge
-            jacob_i, jacob_j = self.residual.edge_jacobian(edge)
+            residual = edge.edge_residual() #FUTURE. Allow different types of edges. residual function will depend on edge
+            jacob_i, jacob_j = edge.edge_jacobian()
             parent_idx = edge.parent.idx
             child_idx = edge.child.idx
             omega = edge.information
@@ -202,9 +202,11 @@ class Algorithm(ABC):
         #FUTURE. Use backtracking or something like that
         return 1.0
 
-    def update(self, delta: torch.Tensor) -> None:
+    def update_vertices(self, delta: torch.Tensor) -> None:
         for i, vertex in enumerate(self.__vertices):
             vertex.update(delta[i])
+
+    def update_edges(self) -> None:
         for edge in self.__edges:
             edge.update()
 
@@ -226,14 +228,13 @@ class Algorithm(ABC):
         for edge in self.__edges:
             residual = edge.edge_residual().unsqueeze(1) #m x 1
             edge_loss = residual.T @ edge.information @ residual
-            acc = acc + edge_loss
+            acc = acc + edge_loss.item()
         return acc
 
 
 class Optimizer:
     def __init__(
         self,
-        residual_class: Type[Residual],
         algorithm_class: Type[Algorithm],
         vertices: List[Vertex] = [],
         edges: List[Edge] = [],
@@ -241,8 +242,9 @@ class Optimizer:
         self.algorithm: Algorithm = algorithm_class(
             edges,
             vertices,
-            residual_class(),
         )
+        self.pre_optim_edges: List[Edge] = self.edges
+        self.pre_optim_vertices: List[Vertex] = self.vertices
 
     @property
     def edges(self) -> List[Edge]:
@@ -252,10 +254,6 @@ class Optimizer:
     def vertices(self) -> List[Vertex]:
         return self.algorithm.vertices
 
-    @property
-    def residual(self) -> Residual:
-        return self.algorithm.residual
-
     def append_vertex(self, vertex: Vertex) -> None:
         self.algorithm.append_vertex(vertex)
 
@@ -263,4 +261,10 @@ class Optimizer:
         self.algorithm.append_edge(edge)
 
     def optimize(self, n_iter) -> None:
+        self.pre_optim_edges = [
+            e.copy() for e in self.edges
+        ]
+        self.pre_optim_vertices = [
+            v.copy() for v in self.vertices
+        ]
         self.algorithm.optimize(n_iter)

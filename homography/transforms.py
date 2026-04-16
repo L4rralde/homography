@@ -610,7 +610,7 @@ class Sim3(SE3):
     def aspypose(self) -> pp.Sim3:
         data = np.concatenate([
             self.translation,
-            scipy_R.from_matrix(self.R).as_quat(),
+            scipy_R.from_matrix(self.rotation).as_quat(),
             np.array(self.scale).reshape((1,))
         ])
         return pp.Sim3(data)
@@ -650,6 +650,13 @@ class Sim3(SE3):
             np.array(self.scale).reshape((1,))
         ])
         return pp.Sim3(data).Log()
+
+    @classmethod
+    def from_tangent(cls, tangent: torch.Tensor) -> "SE3":
+        if not type(tangent) == pp.sim3:
+            tangent = pp.sim3(tangent)
+        pp_transform = tangent.Exp()
+        return cls.from_pypose(pp_transform)
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return (self.scale * SO3.__call__(self, x)) + self.translation
